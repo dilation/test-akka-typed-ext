@@ -5,7 +5,7 @@ lazy val `test-akka-typed-ext` = (project in file("."))
 lazy val commonSettings = Seq(
 
   // Scala:
-  scalaVersion := "2.11.11",
+  scalaVersion := "2.12.6",
   scalacOptions ++= Seq(
     "-feature",
     "-deprecation",
@@ -17,19 +17,19 @@ lazy val commonSettings = Seq(
     "-Yno-adapted-args",
     "-Ywarn-numeric-widen",
     "-Ywarn-dead-code",
-    "-Ybackend:GenBCode",
-    "-Ydelambdafy:method",
-    "-Yopt:l:method",
     //"-Xlog-implicits",
     //"-Ywarn-value-discard",
     "-Ywarn-unused-import"
   ),
 
-  addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.3" cross CrossVersion.binary),
+  addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.5" cross CrossVersion.binary),
 
   // Dependencies:
   libraryDependencies ++= Seq(
-    "com.typesafe.akka" %% "akka-typed" % "2.5.3",
+    "com.typesafe.akka" %% "akka-actor-typed" % "2.5.21",
+    "com.typesafe.akka" %% "akka-cluster-typed" % "2.5.21",
+    "com.typesafe.akka" %% "akka-cluster-sharding-typed" % "2.5.21",
+    "com.typesafe.akka" %% "akka-persistence-typed" % "2.5.21",
     "org.scalatest" %% "scalatest" % "3.0.2" % Test
   )
 )

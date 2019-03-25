@@ -1,7 +1,7 @@
 package com.example
 
-import akka.typed.{ ActorSystem, Extension, ExtensionId }
-import akka.typed.scaladsl.adapter._
+import akka.actor.typed.{ ActorSystem, Extension, ExtensionId }
+import akka.actor.typed.scaladsl.adapter._
 
 final class MyExtension private () extends Extension {
   println("Creating MyExtension ...")

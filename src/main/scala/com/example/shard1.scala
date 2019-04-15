@@ -5,12 +5,16 @@ import scala.concurrent.ExecutionContext
 
 import akka.actor.typed._
 import akka.actor.Scheduler
+import akka.actor.typed.scaladsl._
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.persistence.typed.scaladsl._
 import akka.persistence.typed._
+import akka.cluster.typed.{ Cluster, Join }
+import akka.cluster.sharding.typed.scaladsl.{ ClusterSharding, Entity, EntityTypeKey, EntityRef }
+import akka.cluster.sharding.typed.ShardingEnvelope
 import akka.util.Timeout
 
-object Persist1a {
+object Shard1a {
 
   sealed trait Msg[R] extends ExpectingReply[R]
   final case class Get(key: String)(val replyTo: ActorRef[Option[String]]) extends Msg[Option[String]]
@@ -24,7 +28,7 @@ object Persist1a {
 
   final case class St(map: Map[String, String])
 
-  val b: Behavior[Msg[_]] = EventSourcedBehavior.withEnforcedReplies[Msg[_], Ev, St](
+  def b(entityId: String): Behavior[Msg[_]] = EventSourcedBehavior.withEnforcedReplies[Msg[_], Ev, St](
     persistenceId = PersistenceId("foo"),
     emptyState = St(Map.empty),
     commandHandler = { (state, msg) =>
@@ -43,6 +47,7 @@ object Persist1a {
               }
           }
         case p @ PutIfAbsent(k, v) =>
+          println(p)
           state.map.get(k) match {
             case None =>
               Effect.persist(Ev(k, v)).thenReply(p)(_ => None)
@@ -57,23 +62,39 @@ object Persist1a {
   )
 }
 
-object MainPersist {
+object MainShard {
 
-  import Persist1a._
+  import Shard1a._
 
-  implicit val to: Timeout = Timeout(1.second)
+  implicit val to: Timeout = Timeout(5.second)
+
+  val root: Behavior[Stop.type] = Behaviors.receive { (ctx, _) =>
+    Behavior.stopped
+  }
+
+  val typeKey = EntityTypeKey[Msg[_]]("kvstore")
 
   def main(args: Array[String]): Unit = {
-    val sys = ActorSystem(Persist1a.b, "foo")
+    val sys = ActorSystem(root, "bar")
+    Cluster(sys).manager ! Join(Cluster(sys).selfMember.address)
+    val sha = ClusterSharding(sys)
+    val shardRegion = sha.init(Entity(typeKey, ectx => Shard1a.b(ectx.entityId)))
+    val ref: EntityRef[Msg[_]] = sha.entityRefFor(typeKey, entityId = "myNamespace")
     implicit val sch: Scheduler = sys.scheduler
     implicit val ec: ExecutionContext = sys.executionContext
     val fut = for {
-      opt <- sys ? PutIfAbsent("alma", "99")
+      opt <- shardRegion ? { r: ActorRef[Option[String]] =>
+        ShardingEnvelope("myNamespace", PutIfAbsent("alma", "99")(r))
+      }
       _ = assert(opt.isEmpty)
-      gr <- sys ? Get("alma")
+      gr <- ref ? Get("alma")
       _ = assert(gr == Some("99"), gr.toString)
-      ok <- sys ? Cas("alma", "99", "100")
+      ok <- ref ? Cas("alma", "99", "100")
       _ = assert(ok)
+      gr <- shardRegion ? { r: ActorRef[Option[String]] =>
+        ShardingEnvelope("myNamespace", Get("alma")(r))
+      }
+      _ = assert(gr == Some("100"), gr.toString)
     } yield ()
     try {
       scala.concurrent.Await.result(fut, atMost = 30.seconds)
